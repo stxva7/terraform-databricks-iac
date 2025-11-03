@@ -34,7 +34,7 @@ variable "spark_version" {
 
 variable "node_type" {
   description = "Node type for the cluster"
-  default     = "Standard_D4s_v3"
+  default     = "Standard_DS2_v2"
 }
 
 variable "num_workers" {
