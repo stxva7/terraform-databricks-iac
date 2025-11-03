@@ -18,7 +18,11 @@ Thumbs.db
 .DS_Store
 
 # Terraform local files
+
 .terraform/
 *.tfstate
-*.tfstate.*
+*.tfstate.backup
 .terraform.lock.hcl
+terraform.tfvars
+
+
