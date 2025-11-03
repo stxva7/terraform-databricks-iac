@@ -18,7 +18,7 @@ terraform {
 
   backend "azurerm" {
     resource_group_name   = "rg-databricks-iac"
-    storage_account_name  = "tfstate2025stavan"  # <-- replace with your actual backend storage name
+    storage_account_name  = "tfstate4807"
     container_name        = "tfstate"
     key                   = "terraform.tfstate"
   }
