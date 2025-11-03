@@ -1,7 +1,5 @@
 ###############################################
-# Terraform - Azure Databricks Workspace Setup
-# (Minimal: Resource Group + Databricks Workspace)
-# Databricks provider uses AAD auth via azure_workspace_resource_id
+# Terraform - Azure Databricks (Workspace + Cluster)
 ###############################################
 
 terraform {
@@ -18,14 +16,24 @@ terraform {
     }
   }
 
-  backend "local" {}
+  backend "azurerm" {
+    resource_group_name   = "rg-databricks-iac"
+    storage_account_name  = "tfstate2025stavan"  # <-- replace with your actual backend storage name
+    container_name        = "tfstate"
+    key                   = "terraform.tfstate"
+  }
 }
 
 ###############################################
-# PROVIDER - AZURE
+# PROVIDERS
 ###############################################
 provider "azurerm" {
   features {}
+}
+
+# Azure Active Directory (AAD) authenticated Databricks provider
+provider "databricks" {
+  azure_workspace_resource_id = azurerm_databricks_workspace.dbw.id
 }
 
 ###############################################
@@ -34,13 +42,10 @@ provider "azurerm" {
 resource "azurerm_resource_group" "rg" {
   name     = var.resource_group_name
   location = var.location
-  tags = {
-    project = "terraform-databricks-iac"
-  }
 }
 
 ###############################################
-# DATABRICKS WORKSPACE (minimal)
+# DATABRICKS WORKSPACE
 ###############################################
 resource "azurerm_databricks_workspace" "dbw" {
   name                = var.workspace_name
@@ -55,37 +60,19 @@ resource "azurerm_databricks_workspace" "dbw" {
 }
 
 ###############################################
-# DATABRICKS PROVIDER (AAD)
-# The provider will authenticate using Azure CLI or a Service Principal (CI).
-# It binds to the workspace using the workspace resource id below.
+# DATABRICKS CLUSTER (Basic Compute Node)
 ###############################################
-provider "databricks" {
-  # Bind provider to the exact workspace we created above.
-  azure_workspace_resource_id = azurerm_databricks_workspace.dbw.id
+resource "databricks_cluster" "dev_cluster" {
+  cluster_name            = var.cluster_name
+  spark_version           = var.spark_version
+  node_type_id            = var.node_type
+  num_workers             = var.num_workers
+  autotermination_minutes = var.autotermination_minutes
+
+  custom_tags = {
+    Environment = "Dev"
+    ManagedBy   = "Terraform"
+  }
+
+  depends_on = [azurerm_databricks_workspace.dbw]
 }
-
-###############################################
-# (Optional) Example cluster - keep commented until you want to create clusters
-###############################################
-# resource "databricks_cluster" "demo_cluster" {
-#   cluster_name            = "TF-DAB-CLUSTER"
-#   spark_version           = "13.3.x-scala2.12"
-#   node_type_id            = "Standard_F4s_v2"
-#   num_workers             = 0
-#   autotermination_minutes = 15
-#   custom_tags = {
-#     Environment = "Dev"
-#   }
-# }
-
-###############################################
-# OUTPUTS
-###############################################
-/* output "resource_group_name" {
-  value = azurerm_resource_group.rg.name
-}
-
-output "databricks_workspace_url" {
-  description = "Databricks workspace URL after creation"
-  value       = azurerm_databricks_workspace.dbw.workspace_url
-} */
