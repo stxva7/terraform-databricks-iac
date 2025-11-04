@@ -14,7 +14,7 @@ variable "workspace_name" {
 
 variable "location" {
   description = "Azure region for the workspace"
-  default     = "centralindia"
+  default     = "Central India"
 }
 
 variable "workspace_sku" {
@@ -34,12 +34,12 @@ variable "spark_version" {
 
 variable "node_type" {
   description = "Node type for the cluster"
-  default     = "Standard_DS2_v2"
+  default     = "Standard_D4as_v5"
 }
 
 variable "num_workers" {
   description = "Number of workers in the cluster"
-  default     = 1
+  default     = 0
 }
 
 variable "autotermination_minutes" {
