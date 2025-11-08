@@ -1,7 +1,5 @@
-###############################################
-# Terraform - Azure Databricks (Workspace + Cluster)
-###############################################
 
+# Terraform - Azure Databricks (Workspace + Cluster)
 terraform {
   required_version = ">= 1.5.0"
 
@@ -17,16 +15,14 @@ terraform {
   }
 
   backend "azurerm" {
-    resource_group_name   = "rg-databricks-iac"
-    storage_account_name  = "tfstate4807"
-    container_name        = "tfstate"
-    key                   = "terraform.tfstate"
+    resource_group_name  = "rg-databricks-iac"
+    storage_account_name = "tfstate4807"
+    container_name       = "tfstate"
+    key                  = "terraform.tfstate"
   }
 }
 
-###############################################
 # PROVIDERS
-###############################################
 provider "azurerm" {
   features {}
 }
@@ -36,17 +32,13 @@ provider "databricks" {
   azure_workspace_resource_id = azurerm_databricks_workspace.dbw.id
 }
 
-###############################################
 # RESOURCE GROUP
-###############################################
 resource "azurerm_resource_group" "rg" {
   name     = var.resource_group_name
   location = var.location
 }
 
-###############################################
 # DATABRICKS WORKSPACE
-###############################################
 resource "azurerm_databricks_workspace" "dbw" {
   name                = var.workspace_name
   location            = azurerm_resource_group.rg.location
@@ -59,19 +51,17 @@ resource "azurerm_databricks_workspace" "dbw" {
   }
 }
 
-###############################################
 # DATABRICKS CLUSTER (Basic Compute Node)
-###############################################
 resource "databricks_cluster" "dev_cluster" {
   cluster_name            = var.cluster_name
   spark_version           = var.spark_version
   node_type_id            = var.node_type
   autotermination_minutes = var.autotermination_minutes
-  num_workers             = 0  
+  num_workers             = 0
 
   spark_conf = {
-    "spark.databricks.cluster.profile" = "singleNode"  
-    "spark.master"                     = "local[*]"    
+    "spark.databricks.cluster.profile" = "singleNode"
+    "spark.master"                     = "local[*]"
   }
 
   custom_tags = {
@@ -81,4 +71,19 @@ resource "databricks_cluster" "dev_cluster" {
 
   depends_on = [azurerm_databricks_workspace.dbw]
 }
+
+# Azure Key Vault
+resource "azurerm_key_vault" "kv" {
+  name                = "kv-databricks-iac"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  tenant_id           = data.azurerm_client_config.current.tenant_id
+  sku_name            = "standard"
+
+  tags = {
+    environment = "dev"
+  }
+}
+
+data "azurerm_client_config" "current" {}
 
