@@ -3,7 +3,7 @@ name: Databricks Bundle Deployment
 on:
   push:
     branches:
-      - feature/dab-tfstate
+      - feature/dab-ci-azure-secrets
   workflow_dispatch:
 
 jobs:
