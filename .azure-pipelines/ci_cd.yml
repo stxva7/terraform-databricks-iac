@@ -11,9 +11,6 @@ variables:
   TF_WORKING_DIR: 'terraform'
 
 stages:
-# ----------------------
-# Stage 1: Deploy DEV
-# ----------------------
 - stage: Deploy_DEV
   displayName: "Deploy Databricks Infrastructure - DEV"
   condition: eq(variables['Build.SourceBranchName'], 'dev')
@@ -22,11 +19,12 @@ stages:
     steps:
       - checkout: self
 
-      - task: TerraformInstaller@1
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+        displayName: "Install Terraform"
         inputs:
           terraformVersion: '1.9.0'
 
-      - task: TerraformCLI@0
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-cli-task.TerraformCLI@0
         displayName: "Terraform Init (Dev)"
         inputs:
           provider: 'azurerm'
@@ -36,7 +34,7 @@ stages:
           ensureBackend: true
           environmentServiceName: 'databricks-iac-connection'
 
-      - task: TerraformCLI@0
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-cli-task.TerraformCLI@0
         displayName: "Terraform Apply (Dev)"
         inputs:
           provider: 'azurerm'
@@ -45,9 +43,6 @@ stages:
           environmentServiceName: 'databricks-iac-connection'
           commandOptions: '-auto-approve -var="environment=dev"'
 
-# ----------------------
-# Stage 2: Deploy PROD
-# ----------------------
 - stage: Deploy_PROD
   displayName: "Deploy Databricks Infrastructure - PROD"
   condition: eq(variables['Build.SourceBranchName'], 'main')
@@ -56,11 +51,12 @@ stages:
     steps:
       - checkout: self
 
-      - task: TerraformInstaller@1
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+        displayName: "Install Terraform"
         inputs:
           terraformVersion: '1.9.0'
 
-      - task: TerraformCLI@0
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-cli-task.TerraformCLI@0
         displayName: "Terraform Init (Prod)"
         inputs:
           provider: 'azurerm'
@@ -70,7 +66,7 @@ stages:
           ensureBackend: true
           environmentServiceName: 'databricks-iac-connection'
 
-      - task: TerraformCLI@0
+      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-cli-task.TerraformCLI@0
         displayName: "Terraform Apply (Prod)"
         inputs:
           provider: 'azurerm'
