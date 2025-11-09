@@ -1,0 +1,80 @@
+trigger:
+  branches:
+    include:
+      - main
+      - dev
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  TF_WORKING_DIR: 'terraform'
+
+stages:
+# ----------------------
+# Stage 1: Deploy DEV
+# ----------------------
+- stage: Deploy_DEV
+  displayName: "Deploy Databricks Infrastructure - DEV"
+  condition: eq(variables['Build.SourceBranchName'], 'dev')
+  jobs:
+  - job: Terraform_DEV
+    steps:
+      - checkout: self
+
+      - task: TerraformInstaller@1
+        inputs:
+          terraformVersion: '1.9.0'
+
+      - task: TerraformCLI@0
+        displayName: "Terraform Init (Dev)"
+        inputs:
+          provider: 'azurerm'
+          command: 'init'
+          workingDirectory: '$(TF_WORKING_DIR)'
+          backendType: 'azurerm'
+          ensureBackend: true
+          environmentServiceName: 'databricks-iac-connection'
+
+      - task: TerraformCLI@0
+        displayName: "Terraform Apply (Dev)"
+        inputs:
+          provider: 'azurerm'
+          command: 'apply'
+          workingDirectory: '$(TF_WORKING_DIR)'
+          environmentServiceName: 'databricks-iac-connection'
+          commandOptions: '-auto-approve -var="environment=dev"'
+
+# ----------------------
+# Stage 2: Deploy PROD
+# ----------------------
+- stage: Deploy_PROD
+  displayName: "Deploy Databricks Infrastructure - PROD"
+  condition: eq(variables['Build.SourceBranchName'], 'main')
+  jobs:
+  - job: Terraform_PROD
+    steps:
+      - checkout: self
+
+      - task: TerraformInstaller@1
+        inputs:
+          terraformVersion: '1.9.0'
+
+      - task: TerraformCLI@0
+        displayName: "Terraform Init (Prod)"
+        inputs:
+          provider: 'azurerm'
+          command: 'init'
+          workingDirectory: '$(TF_WORKING_DIR)'
+          backendType: 'azurerm'
+          ensureBackend: true
+          environmentServiceName: 'databricks-iac-connection'
+
+      - task: TerraformCLI@0
+        displayName: "Terraform Apply (Prod)"
+        inputs:
+          provider: 'azurerm'
+          command: 'apply'
+          workingDirectory: '$(TF_WORKING_DIR)'
+          environmentServiceName: 'databricks-iac-connection'
+          commandOptions: '-auto-approve -var="environment=prod"'
