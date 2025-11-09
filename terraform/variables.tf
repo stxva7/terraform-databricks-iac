@@ -19,7 +19,7 @@ variable "location" {
 
 variable "workspace_sku" {
   description = "Databricks workspace pricing tier"
-  default     = "standard"
+  default     = "premium"
 }
 
 variable "cluster_name" {
