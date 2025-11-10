@@ -50,10 +50,10 @@ stages:
           inputs:
             targetType: 'inline'
             script: |
-              Write-Host "ARM_CLIENT_ID present? " + (![string]::IsNullOrEmpty("$(ARM_CLIENT_ID)"))
-              Write-Host "ARM_SUBSCRIPTION_ID present? " + (![string]::IsNullOrEmpty("$(ARM_SUBSCRIPTION_ID)"))
-              Write-Host "Tenant ID: $(ARM_TENANT_ID.Substring(0,8))****** (hidden)"
-              Write-Host "✅ ARM variables injected."
+              Write-Host "ARM_CLIENT_ID present?  + $([bool]$env:ARM_CLIENT_ID)"
+              Write-Host "ARM_SUBSCRIPTION_ID present?  + $([bool]$env:ARM_SUBSCRIPTION_ID)"
+              Write-Host "ARM_TENANT_ID present?  + $([bool]$env:ARM_TENANT_ID)"
+              Write-Host ("Tenant ID: {0}****** (hidden)" -f $env:ARM_TENANT_ID.Substring(0,8))
 
         # Step 3: Install Terraform
         - task: PowerShell@2
