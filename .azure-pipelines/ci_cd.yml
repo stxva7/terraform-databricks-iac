@@ -1,3 +1,7 @@
+# Azure DevOps Pipeline for Terraform - Databricks IaC
+# Simplified: Handles both DEV and PROD from one pipeline
+# Uses official Microsoft DevLabs Terraform extension
+
 trigger:
   branches:
     include:
@@ -11,66 +15,75 @@ variables:
   TF_WORKING_DIR: 'terraform'
 
 stages:
+# -----------------------------------
+# Stage 1: Deploy DEV Environment
+# -----------------------------------
 - stage: Deploy_DEV
   displayName: "Deploy Databricks Infrastructure - DEV"
   condition: eq(variables['Build.SourceBranchName'], 'dev')
   jobs:
   - job: Terraform_DEV
+    displayName: "Terraform Apply - DEV"
     steps:
-      - checkout: self
+    - checkout: self
 
-      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
-        displayName: "Install Terraform"
-        inputs:
-          terraformVersion: '1.9.0'
+    - task: TerraformInstaller@1
+      displayName: "Install Terraform"
+      inputs:
+        terraformVersion: '1.9.0'
 
-      - task: TerraformCLI@0
-        displayName: "Terraform Init (Dev)"
-        inputs:
-          provider: 'azurerm'
-          command: 'init'
-          workingDirectory: '$(TF_WORKING_DIR)'
-          backendType: 'azurerm'
-          ensureBackend: true
-          environmentServiceName: 'databricks-iac-connection'
+    - task: TerraformCLI@0
+      displayName: "Terraform Init (DEV)"
+      inputs:
+        command: 'init'
+        workingDirectory: '$(TF_WORKING_DIR)'
 
-      - task: TerraformCLI@0
-        displayName: "Terraform Apply (Dev)"
-        inputs:
-          provider: 'azurerm'
-          command: 'apply'
-          workingDirectory: '$(TF_WORKING_DIR)'
-          environmentServiceName: 'databricks-iac-connection'
-          commandOptions: '-auto-approve -var="environment=dev"'
+    - task: TerraformCLI@0
+      displayName: "Terraform Plan (DEV)"
+      inputs:
+        command: 'plan'
+        workingDirectory: '$(TF_WORKING_DIR)'
 
+    - task: TerraformCLI@0
+      displayName: "Terraform Apply (DEV)"
+      inputs:
+        command: 'apply'
+        workingDirectory: '$(TF_WORKING_DIR)'
+        commandOptions: '-auto-approve'
+
+# -----------------------------------
+# Stage 2: Deploy PROD Environment
+# -----------------------------------
 - stage: Deploy_PROD
   displayName: "Deploy Databricks Infrastructure - PROD"
+  dependsOn: Deploy_DEV
   condition: eq(variables['Build.SourceBranchName'], 'main')
   jobs:
   - job: Terraform_PROD
+    displayName: "Terraform Apply - PROD"
     steps:
-      - checkout: self
+    - checkout: self
 
-      - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
-        displayName: "Install Terraform"
-        inputs:
-          terraformVersion: '1.9.0'
+    - task: TerraformInstaller@1
+      displayName: "Install Terraform"
+      inputs:
+        terraformVersion: '1.9.0'
 
-      - task: TerraformCLI@0
-        displayName: "Terraform Init (Prod)"
-        inputs:
-          provider: 'azurerm'
-          command: 'init'
-          workingDirectory: '$(TF_WORKING_DIR)'
-          backendType: 'azurerm'
-          ensureBackend: true
-          environmentServiceName: 'databricks-iac-connection'
+    - task: TerraformCLI@0
+      displayName: "Terraform Init (PROD)"
+      inputs:
+        command: 'init'
+        workingDirectory: '$(TF_WORKING_DIR)'
 
-      - task: TerraformCLI@0
-        displayName: "Terraform Apply (Prod)"
-        inputs:
-          provider: 'azurerm'
-          command: 'apply'
-          workingDirectory: '$(TF_WORKING_DIR)'
-          environmentServiceName: 'databricks-iac-connection'
-          commandOptions: '-auto-approve -var="environment=prod"'
+    - task: TerraformCLI@0
+      displayName: "Terraform Plan (PROD)"
+      inputs:
+        command: 'plan'
+        workingDirectory: '$(TF_WORKING_DIR)'
+
+    - task: TerraformCLI@0
+      displayName: "Terraform Apply (PROD)"
+      inputs:
+        command: 'apply'
+        workingDirectory: '$(TF_WORKING_DIR)'
+        commandOptions: '-auto-approve'
