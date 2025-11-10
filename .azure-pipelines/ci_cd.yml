@@ -1,7 +1,3 @@
-# ===============================================
-# Azure DevOps Pipeline - Terraform for Databricks
-# ===============================================
-
 trigger:
   branches:
     include:
@@ -17,152 +13,94 @@ variables:
   TF_VERSION: '1.5.7'
   ENVIRONMENT: 'dev'
 
+  # Azure authentication variables (fetched from pipeline or variable group)
+  ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+  ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+  ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+  ARM_TENANT_ID: $(ARM_TENANT_ID)
+
 stages:
-# ================================
-#  DEV ENVIRONMENT
-# ================================
-- stage: Terraform_DEV
-  displayName: 'Terraform Deploy - DEV'
-  condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'dev'))
-  jobs:
-    - job: Terraform_Dev
-      displayName: 'Terraform IaC Deployment - DEV'
-      steps:
-        # Step 1: Checkout repo
-        - checkout: self
+  - stage: Terraform_Deploy
+    displayName: 'Terraform Deployment'
+    jobs:
+      - job: Terraform
+        displayName: 'Terraform IaC on Windows Agent'
+        steps:
+          # Step 1: Checkout the repo
+          - checkout: self
 
-        # Step 2: Export ARM credentials from Pipeline Variables
-        - task: PowerShell@2
-          displayName: 'Export ARM credentials to environment'
-          inputs:
-            targetType: 'inline'
-            script: |
-              Write-Host "Setting environment variables for Azure authentication..."
-              $env:ARM_CLIENT_ID        = "$(ARM_CLIENT_ID)"
-              $env:ARM_CLIENT_SECRET    = "$(ARM_CLIENT_SECRET)"
-              $env:ARM_SUBSCRIPTION_ID  = "$(ARM_SUBSCRIPTION_ID)"
-              $env:ARM_TENANT_ID        = "$(ARM_TENANT_ID)"
-              Write-Host "✅ ARM credentials exported successfully."
+          # Step 2: Install Terraform CLI
+          - task: PowerShell@2
+            displayName: 'Install Terraform CLI'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "Installing Terraform v$(TF_VERSION)..."
+                $tfPath = "C:\terraform"
+                if (!(Test-Path $tfPath)) { New-Item -Path $tfPath -ItemType Directory | Out-Null }
+                Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_windows_amd64.zip" -OutFile "$tfPath\terraform.zip"
+                Expand-Archive -Path "$tfPath\terraform.zip" -DestinationPath $tfPath -Force
+                [Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";$tfPath", [EnvironmentVariableTarget]::Process)
+                terraform -version
 
-        # Optional sanity check
-        - task: PowerShell@2
-          displayName: 'Sanity check ARM environment'
-          inputs:
-            targetType: 'inline'
-            script: |
-              Write-Host "ARM_CLIENT_ID present?  + $([bool]$env:ARM_CLIENT_ID)"
-              Write-Host "ARM_SUBSCRIPTION_ID present?  + $([bool]$env:ARM_SUBSCRIPTION_ID)"
-              Write-Host "ARM_TENANT_ID present?  + $([bool]$env:ARM_TENANT_ID)"
-              Write-Host ("Tenant ID: {0}****** (hidden)" -f $env:ARM_TENANT_ID.Substring(0,8))
+          # Step 3: Set Azure Authentication Environment Variables
+          - task: PowerShell@2
+            displayName: 'Set Azure Auth Environment Variables'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "Exporting Azure Service Principal credentials..."
+                [System.Environment]::SetEnvironmentVariable("ARM_CLIENT_ID", "$(ARM_CLIENT_ID)", "Process")
+                [System.Environment]::SetEnvironmentVariable("ARM_CLIENT_SECRET", "$(ARM_CLIENT_SECRET)", "Process")
+                [System.Environment]::SetEnvironmentVariable("ARM_SUBSCRIPTION_ID", "$(ARM_SUBSCRIPTION_ID)", "Process")
+                [System.Environment]::SetEnvironmentVariable("ARM_TENANT_ID", "$(ARM_TENANT_ID)", "Process")
+                Write-Host "Environment variables set successfully."
 
-        # Step 3: Install Terraform
-        - task: PowerShell@2
-          displayName: 'Install Terraform CLI'
-          inputs:
-            targetType: 'inline'
-            script: |
-              Write-Host "Installing Terraform v$(TF_VERSION)..."
-              $tfPath = "C:\terraform"
-              if (!(Test-Path $tfPath)) { New-Item -Path $tfPath -ItemType Directory | Out-Null }
-              Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_windows_amd64.zip" -OutFile "$tfPath\terraform.zip"
-              Expand-Archive -Path "$tfPath\terraform.zip" -DestinationPath $tfPath -Force
-              [Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";$tfPath", [EnvironmentVariableTarget]::Process)
-              terraform -version
+          # Step 4: Sanity check
+          - task: PowerShell@2
+            displayName: 'Sanity check ARM environment'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "ARM_CLIENT_ID present?  + $([bool]$env:ARM_CLIENT_ID)"
+                Write-Host "ARM_SUBSCRIPTION_ID present?  + $([bool]$env:ARM_SUBSCRIPTION_ID)"
+                Write-Host "ARM_TENANT_ID present?  + $([bool]$env:ARM_TENANT_ID)"
+                if ($env:ARM_TENANT_ID) {
+                  Write-Host ("Tenant ID: {0}****** (hidden)" -f $env:ARM_TENANT_ID.Substring(0,8))
+                }
 
-        # Step 4: Terraform Init
-        - task: PowerShell@2
-          displayName: 'Terraform Init - DEV'
-          inputs:
-            targetType: 'inline'
-            script: |
-              cd "$(System.DefaultWorkingDirectory)\terraform"
-              terraform init -backend-config="key=terraform-dev.tfstate" -input=false
+          # Step 5: Terraform Init
+          - task: PowerShell@2
+            displayName: 'Terraform Init'
+            inputs:
+              targetType: 'inline'
+              script: |
+                cd "$(System.DefaultWorkingDirectory)\terraform"
+                terraform init -input=false
 
-        # Step 5: Terraform Validate
-        - task: PowerShell@2
-          displayName: 'Terraform Validate - DEV'
-          inputs:
-            targetType: 'inline'
-            script: |
-              cd "$(System.DefaultWorkingDirectory)\terraform"
-              terraform validate
+          # Step 6: Terraform Validate
+          - task: PowerShell@2
+            displayName: 'Terraform Validate'
+            inputs:
+              targetType: 'inline'
+              script: |
+                cd "$(System.DefaultWorkingDirectory)\terraform"
+                terraform validate
 
-        # Step 6: Terraform Plan
-        - task: PowerShell@2
-          displayName: 'Terraform Plan - DEV'
-          inputs:
-            targetType: 'inline'
-            script: |
-              cd "$(System.DefaultWorkingDirectory)\terraform"
-              terraform plan -out=tfplan-dev
+          # Step 7: Terraform Plan
+          - task: PowerShell@2
+            displayName: 'Terraform Plan'
+            inputs:
+              targetType: 'inline'
+              script: |
+                cd "$(System.DefaultWorkingDirectory)\terraform"
+                terraform plan -out=tfplan
 
-        # Step 7: Terraform Apply
-        - task: PowerShell@2
-          displayName: 'Terraform Apply - DEV'
-          inputs:
-            targetType: 'inline'
-            script: |
-              cd "$(System.DefaultWorkingDirectory)\terraform"
-              terraform apply -auto-approve tfplan-dev
-
-# ================================
-#  PROD ENVIRONMENT (Auto on merge)
-# ================================
-- stage: Terraform_PROD
-  displayName: 'Terraform Deploy - PROD'
-  dependsOn: Terraform_DEV
-  condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'main'))
-  jobs:
-    - job: Terraform_Prod
-      displayName: 'Terraform IaC Deployment - PROD'
-      steps:
-        - checkout: self
-
-        # Reuse exported ARM variables
-        - task: PowerShell@2
-          displayName: 'Export ARM credentials to environment'
-          inputs:
-            targetType: 'inline'
-            script: |
-              Write-Host "Setting environment variables for Azure authentication..."
-              $env:ARM_CLIENT_ID        = "$(ARM_CLIENT_ID)"
-              $env:ARM_CLIENT_SECRET    = "$(ARM_CLIENT_SECRET)"
-              $env:ARM_SUBSCRIPTION_ID  = "$(ARM_SUBSCRIPTION_ID)"
-              $env:ARM_TENANT_ID        = "$(ARM_TENANT_ID)"
-
-        - task: PowerShell@2
-          displayName: 'Install Terraform CLI'
-          inputs:
-            targetType: 'inline'
-            script: |
-              Write-Host "Installing Terraform v$(TF_VERSION)..."
-              $tfPath = "C:\terraform"
-              if (!(Test-Path $tfPath)) { New-Item -Path $tfPath -ItemType Directory | Out-Null }
-              Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_windows_amd64.zip" -OutFile "$tfPath\terraform.zip"
-              Expand-Archive -Path "$tfPath\terraform.zip" -DestinationPath $tfPath -Force
-              [Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";$tfPath", [EnvironmentVariableTarget]::Process)
-              terraform -version
-
-        - task: PowerShell@2
-          displayName: 'Terraform Init - PROD'
-          inputs:
-            targetType: 'inline'
-            script: |
-              cd "$(System.DefaultWorkingDirectory)\terraform"
-              terraform init -backend-config="key=terraform-prod.tfstate" -input=false
-
-        - task: PowerShell@2
-          displayName: 'Terraform Plan - PROD'
-          inputs:
-            targetType: 'inline'
-            script: |
-              cd "$(System.DefaultWorkingDirectory)\terraform"
-              terraform plan -out=tfplan-prod
-
-        - task: PowerShell@2
-          displayName: 'Terraform Apply - PROD'
-          inputs:
-            targetType: 'inline'
-            script: |
-              cd "$(System.DefaultWorkingDirectory)\terraform"
-              terraform apply -auto-approve tfplan-prod
+          # Step 8: Terraform Apply (auto-approve)
+          - task: PowerShell@2
+            displayName: 'Terraform Apply'
+            inputs:
+              targetType: 'inline'
+              script: |
+                cd "$(System.DefaultWorkingDirectory)\terraform"
+                terraform apply -auto-approve tfplan
