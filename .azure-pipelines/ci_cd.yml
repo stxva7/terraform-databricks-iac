@@ -13,12 +13,6 @@ variables:
   TF_VERSION: '1.5.7'
   ENVIRONMENT: 'dev'
 
-  # Azure authentication variables (fetched from pipeline or variable group)
-  ARM_CLIENT_ID: $(ARM_CLIENT_ID)
-  ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
-  ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
-  ARM_TENANT_ID: $(ARM_TENANT_ID)
-
 stages:
   - stage: Terraform_Deploy
     displayName: 'Terraform Deployment'
@@ -26,10 +20,8 @@ stages:
       - job: Terraform
         displayName: 'Terraform IaC on Windows Agent'
         steps:
-          # Step 1: Checkout the repo
           - checkout: self
 
-          # Step 2: Install Terraform CLI
           - task: PowerShell@2
             displayName: 'Install Terraform CLI'
             inputs:
@@ -38,25 +30,37 @@ stages:
                 Write-Host "Installing Terraform v$(TF_VERSION)..."
                 $tfPath = "C:\terraform"
                 if (!(Test-Path $tfPath)) { New-Item -Path $tfPath -ItemType Directory | Out-Null }
-                Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_windows_amd64.zip" -OutFile "$tfPath\terraform.zip"
-                Expand-Archive -Path "$tfPath\terraform.zip" -DestinationPath $tfPath -Force
-                [Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";$tfPath", [EnvironmentVariableTarget]::Process)
+                $zip = "$tfPath\terraform.zip"
+                Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_windows_amd64.zip" -OutFile $zip
+                Expand-Archive -Path $zip -DestinationPath $tfPath -Force
+                [System.Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";$tfPath", [EnvironmentVariableTarget]::Process)
                 terraform -version
 
-          # Step 3: Set Azure Authentication Environment Variables
           - task: PowerShell@2
-            displayName: 'Set Azure Auth Environment Variables'
+            displayName: 'Set Azure Auth Environment Variables (from pipeline variables)'
             inputs:
               targetType: 'inline'
               script: |
                 Write-Host "Exporting Azure Service Principal credentials..."
+                $missing = @()
+
+                if ("$(ARM_CLIENT_ID)" -eq "") { $missing += "ARM_CLIENT_ID" } 
+                if ("$(ARM_CLIENT_SECRET)" -eq "") { $missing += "ARM_CLIENT_SECRET" } 
+                if ("$(ARM_SUBSCRIPTION_ID)" -eq "") { $missing += "ARM_SUBSCRIPTION_ID" } 
+                if ("$(ARM_TENANT_ID)" -eq "") { $missing += "ARM_TENANT_ID" } 
+
+                if ($missing.Count -gt 0) {
+                  Write-Error "Missing required pipeline variables: $($missing -join ', '). Add them in Pipeline -> Edit -> Variables or in a Library variable group. Aborting."
+                  exit 1
+                }
+
+                # Set process-level env vars so Terraform can use them
                 [System.Environment]::SetEnvironmentVariable("ARM_CLIENT_ID", "$(ARM_CLIENT_ID)", "Process")
                 [System.Environment]::SetEnvironmentVariable("ARM_CLIENT_SECRET", "$(ARM_CLIENT_SECRET)", "Process")
                 [System.Environment]::SetEnvironmentVariable("ARM_SUBSCRIPTION_ID", "$(ARM_SUBSCRIPTION_ID)", "Process")
                 [System.Environment]::SetEnvironmentVariable("ARM_TENANT_ID", "$(ARM_TENANT_ID)", "Process")
                 Write-Host "Environment variables set successfully."
 
-          # Step 4: Sanity check
           - task: PowerShell@2
             displayName: 'Sanity check ARM environment'
             inputs:
@@ -69,7 +73,6 @@ stages:
                   Write-Host ("Tenant ID: {0}****** (hidden)" -f $env:ARM_TENANT_ID.Substring(0,8))
                 }
 
-          # Step 5: Terraform Init
           - task: PowerShell@2
             displayName: 'Terraform Init'
             inputs:
@@ -78,7 +81,6 @@ stages:
                 cd "$(System.DefaultWorkingDirectory)\terraform"
                 terraform init -input=false
 
-          # Step 6: Terraform Validate
           - task: PowerShell@2
             displayName: 'Terraform Validate'
             inputs:
@@ -87,7 +89,6 @@ stages:
                 cd "$(System.DefaultWorkingDirectory)\terraform"
                 terraform validate
 
-          # Step 7: Terraform Plan
           - task: PowerShell@2
             displayName: 'Terraform Plan'
             inputs:
@@ -96,7 +97,6 @@ stages:
                 cd "$(System.DefaultWorkingDirectory)\terraform"
                 terraform plan -out=tfplan
 
-          # Step 8: Terraform Apply (auto-approve)
           - task: PowerShell@2
             displayName: 'Terraform Apply'
             inputs:
