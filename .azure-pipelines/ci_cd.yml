@@ -5,7 +5,9 @@ trigger:
       - dev
 
 pool:
-  vmImage: 'ubuntu-latest'
+  name: 'Default'
+  demands:
+  - agent.name -equals local-agent
 
 variables:
   TF_WORKING_DIR: 'terraform'
