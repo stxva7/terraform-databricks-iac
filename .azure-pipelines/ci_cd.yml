@@ -1,7 +1,3 @@
-# Azure DevOps Pipeline for Terraform - Databricks IaC
-# Simplified: Handles both DEV and PROD from one pipeline
-# Uses official Microsoft DevLabs Terraform extension
-
 trigger:
   branches:
     include:
@@ -15,75 +11,92 @@ variables:
   TF_WORKING_DIR: 'terraform'
 
 stages:
-# -----------------------------------
-# Stage 1: Deploy DEV Environment
-# -----------------------------------
-- stage: Deploy_DEV
-  displayName: "Deploy Databricks Infrastructure - DEV"
-  condition: eq(variables['Build.SourceBranchName'], 'dev')
-  jobs:
-  - job: Terraform_DEV
-    displayName: "Terraform Apply - DEV"
-    steps:
-    - checkout: self
+  - stage: Deploy_DEV
+    displayName: "Deploy Databricks Infrastructure - DEV"
+    condition: eq(variables['Build.SourceBranchName'], 'dev')
+    jobs:
+      - job: Terraform_DEV
+        displayName: "Terraform Apply - DEV"
+        steps:
+          - checkout: self
 
-    - task: TerraformInstaller@1
-      displayName: "Install Terraform"
-      inputs:
-        terraformVersion: '1.9.0'
+          - task: Bash@3
+            displayName: "Install Terraform"
+            inputs:
+              targetType: 'inline'
+              script: |
+                sudo apt-get update -y
+                sudo apt-get install -y unzip wget
+                wget https://releases.hashicorp.com/terraform/1.9.0/terraform_1.9.0_linux_amd64.zip
+                unzip terraform_1.9.0_linux_amd64.zip
+                sudo mv terraform /usr/local/bin/
+                terraform -version
 
-    - task: TerraformCLI@0
-      displayName: "Terraform Init (DEV)"
-      inputs:
-        command: 'init'
-        workingDirectory: '$(TF_WORKING_DIR)'
+          - task: Bash@3
+            displayName: "Terraform Init"
+            inputs:
+              workingDirectory: '$(TF_WORKING_DIR)'
+              targetType: 'inline'
+              script: |
+                terraform init
 
-    - task: TerraformCLI@0
-      displayName: "Terraform Plan (DEV)"
-      inputs:
-        command: 'plan'
-        workingDirectory: '$(TF_WORKING_DIR)'
+          - task: Bash@3
+            displayName: "Terraform Plan"
+            inputs:
+              workingDirectory: '$(TF_WORKING_DIR)'
+              targetType: 'inline'
+              script: |
+                terraform plan -out=tfplan
 
-    - task: TerraformCLI@0
-      displayName: "Terraform Apply (DEV)"
-      inputs:
-        command: 'apply'
-        workingDirectory: '$(TF_WORKING_DIR)'
-        commandOptions: '-auto-approve'
+          - task: Bash@3
+            displayName: "Terraform Apply"
+            inputs:
+              workingDirectory: '$(TF_WORKING_DIR)'
+              targetType: 'inline'
+              script: |
+                terraform apply -auto-approve tfplan
 
-# -----------------------------------
-# Stage 2: Deploy PROD Environment
-# -----------------------------------
-- stage: Deploy_PROD
-  displayName: "Deploy Databricks Infrastructure - PROD"
-  dependsOn: Deploy_DEV
-  condition: eq(variables['Build.SourceBranchName'], 'main')
-  jobs:
-  - job: Terraform_PROD
-    displayName: "Terraform Apply - PROD"
-    steps:
-    - checkout: self
+  - stage: Deploy_PROD
+    displayName: "Deploy Databricks Infrastructure - PROD"
+    condition: eq(variables['Build.SourceBranchName'], 'main')
+    jobs:
+      - job: Terraform_PROD
+        displayName: "Terraform Apply - PROD"
+        steps:
+          - checkout: self
 
-    - task: TerraformInstaller@1
-      displayName: "Install Terraform"
-      inputs:
-        terraformVersion: '1.9.0'
+          - task: Bash@3
+            displayName: "Install Terraform"
+            inputs:
+              targetType: 'inline'
+              script: |
+                sudo apt-get update -y
+                sudo apt-get install -y unzip wget
+                wget https://releases.hashicorp.com/terraform/1.9.0/terraform_1.9.0_linux_amd64.zip
+                unzip terraform_1.9.0_linux_amd64.zip
+                sudo mv terraform /usr/local/bin/
+                terraform -version
 
-    - task: TerraformCLI@0
-      displayName: "Terraform Init (PROD)"
-      inputs:
-        command: 'init'
-        workingDirectory: '$(TF_WORKING_DIR)'
+          - task: Bash@3
+            displayName: "Terraform Init"
+            inputs:
+              workingDirectory: '$(TF_WORKING_DIR)'
+              targetType: 'inline'
+              script: |
+                terraform init
 
-    - task: TerraformCLI@0
-      displayName: "Terraform Plan (PROD)"
-      inputs:
-        command: 'plan'
-        workingDirectory: '$(TF_WORKING_DIR)'
+          - task: Bash@3
+            displayName: "Terraform Plan"
+            inputs:
+              workingDirectory: '$(TF_WORKING_DIR)'
+              targetType: 'inline'
+              script: |
+                terraform plan -out=tfplan
 
-    - task: TerraformCLI@0
-      displayName: "Terraform Apply (PROD)"
-      inputs:
-        command: 'apply'
-        workingDirectory: '$(TF_WORKING_DIR)'
-        commandOptions: '-auto-approve'
+          - task: Bash@3
+            displayName: "Terraform Apply"
+            inputs:
+              workingDirectory: '$(TF_WORKING_DIR)'
+              targetType: 'inline'
+              script: |
+                terraform apply -auto-approve tfplan
