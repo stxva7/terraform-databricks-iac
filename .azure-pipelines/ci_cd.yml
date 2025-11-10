@@ -23,7 +23,7 @@ stages:
           # Step 1: Check out repository
           - checkout: self
 
-          # Step 2: Install Terraform (Windows compatible)
+          # Step 2: Install Terraform
           - task: PowerShell@2
             displayName: 'Install Terraform CLI'
             inputs:
@@ -37,19 +37,18 @@ stages:
                 [Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";$tfPath", [EnvironmentVariableTarget]::Process)
                 terraform -version
 
-          # 🆕 Step 3: Authenticate to Azure using Service Principal
+          # 🆕 Step 3: Export Azure credentials for Terraform (Service Principal)
           - task: PowerShell@2
-            displayName: 'Azure Login via Service Principal'
+            displayName: 'Set Azure Service Principal Environment Variables'
             inputs:
               targetType: 'inline'
               script: |
-                Write-Host "Logging into Azure using Service Principal..."
-                az login --service-principal `
-                  -u "$(ARM_CLIENT_ID)" `
-                  -p "$(ARM_CLIENT_SECRET)" `
-                  --tenant "$(ARM_TENANT_ID)"
-                az account set --subscription "$(ARM_SUBSCRIPTION_ID)"
-                Write-Host "Azure login successful."
+                Write-Host "Setting environment variables for Terraform authentication..."
+                $env:ARM_CLIENT_ID = "$(ARM_CLIENT_ID)"
+                $env:ARM_CLIENT_SECRET = "$(ARM_CLIENT_SECRET)"
+                $env:ARM_SUBSCRIPTION_ID = "$(ARM_SUBSCRIPTION_ID)"
+                $env:ARM_TENANT_ID = "$(ARM_TENANT_ID)"
+                Write-Host "Environment variables set successfully."
 
           # Step 4: Terraform Init
           - task: PowerShell@2
