@@ -4,6 +4,12 @@ trigger:
       - dev
       - main
 
+# Optional: prevent pipeline from running when tags or other refs are pushed
+pr:
+  branches:
+    include:
+      - main
+
 pool:
   name: Default
   demands:
@@ -22,6 +28,7 @@ stages:
 # ================================
 - stage: Terraform_DEV
   displayName: 'Terraform Deploy - DEV'
+  condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'dev'))
   jobs:
     - job: Terraform_Dev
       displayName: 'Terraform IaC Deployment - DEV'
@@ -80,7 +87,7 @@ stages:
 - stage: Terraform_PROD
   displayName: 'Terraform Deploy - PROD'
   dependsOn: Terraform_DEV
-  condition: succeeded()
+  condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'main'))
   jobs:
     - job: Terraform_Prod
       displayName: 'Terraform IaC Deployment - PROD'
