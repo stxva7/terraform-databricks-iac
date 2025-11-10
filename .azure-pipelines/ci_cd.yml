@@ -37,7 +37,21 @@ stages:
                 [Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";$tfPath", [EnvironmentVariableTarget]::Process)
                 terraform -version
 
-          # Step 3: Terraform Init
+          # 🆕 Step 3: Authenticate to Azure using Service Principal
+          - task: PowerShell@2
+            displayName: 'Azure Login via Service Principal'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "Logging into Azure using Service Principal..."
+                az login --service-principal `
+                  -u "$(ARM_CLIENT_ID)" `
+                  -p "$(ARM_CLIENT_SECRET)" `
+                  --tenant "$(ARM_TENANT_ID)"
+                az account set --subscription "$(ARM_SUBSCRIPTION_ID)"
+                Write-Host "Azure login successful."
+
+          # Step 4: Terraform Init
           - task: PowerShell@2
             displayName: 'Terraform Init'
             inputs:
@@ -46,7 +60,7 @@ stages:
                 cd "$(System.DefaultWorkingDirectory)\terraform"
                 terraform init -input=false
 
-          # Step 4: Terraform Validate
+          # Step 5: Terraform Validate
           - task: PowerShell@2
             displayName: 'Terraform Validate'
             inputs:
@@ -55,7 +69,7 @@ stages:
                 cd "$(System.DefaultWorkingDirectory)\terraform"
                 terraform validate
 
-          # Step 5: Terraform Plan
+          # Step 6: Terraform Plan
           - task: PowerShell@2
             displayName: 'Terraform Plan'
             inputs:
@@ -64,7 +78,7 @@ stages:
                 cd "$(System.DefaultWorkingDirectory)\terraform"
                 terraform plan -out=tfplan
 
-          # Step 6: Terraform Apply (auto-approve)
+          # Step 7: Terraform Apply (auto-approve)
           - task: PowerShell@2
             displayName: 'Terraform Apply'
             inputs:
