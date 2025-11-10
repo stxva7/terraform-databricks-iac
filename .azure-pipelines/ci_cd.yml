@@ -20,8 +20,11 @@ stages:
       - job: Terraform
         displayName: 'Terraform IaC on Windows Agent'
         steps:
+
+          # Step 1: Checkout repo
           - checkout: self
 
+          # Step 2: Install Terraform
           - task: PowerShell@2
             displayName: 'Install Terraform CLI'
             inputs:
@@ -33,54 +36,56 @@ stages:
                 $zip = "$tfPath\terraform.zip"
                 Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_windows_amd64.zip" -OutFile $zip
                 Expand-Archive -Path $zip -DestinationPath $tfPath -Force
-                [System.Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";$tfPath", [EnvironmentVariableTarget]::Process)
+                [Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";$tfPath", [EnvironmentVariableTarget]::Process)
                 terraform -version
 
+          # Step 3: Export Azure SP Credentials for Terraform
           - task: PowerShell@2
-            displayName: 'Set Azure Auth Environment Variables (from pipeline variables)'
+            displayName: 'Export Azure Service Principal Credentials'
             inputs:
               targetType: 'inline'
               script: |
-                Write-Host "Exporting Azure Service Principal credentials..."
-                $missing = @()
-
-                if ("$(ARM_CLIENT_ID)" -eq "") { $missing += "ARM_CLIENT_ID" } 
-                if ("$(ARM_CLIENT_SECRET)" -eq "") { $missing += "ARM_CLIENT_SECRET" } 
-                if ("$(ARM_SUBSCRIPTION_ID)" -eq "") { $missing += "ARM_SUBSCRIPTION_ID" } 
-                if ("$(ARM_TENANT_ID)" -eq "") { $missing += "ARM_TENANT_ID" } 
-
-                if ($missing.Count -gt 0) {
-                  Write-Error "Missing required pipeline variables: $($missing -join ', '). Add them in Pipeline -> Edit -> Variables or in a Library variable group. Aborting."
-                  exit 1
+                $ErrorActionPreference = "Stop"
+                Write-Host "Setting Azure Service Principal credentials for Terraform..."
+                if (-not "$(ARM_CLIENT_ID)" -or -not "$(ARM_CLIENT_SECRET)" -or -not "$(ARM_SUBSCRIPTION_ID)" -or -not "$(ARM_TENANT_ID)") {
+                  Write-Error "Missing one or more ARM_* variables. Please define them in your pipeline variables."
                 }
 
-                # Set process-level env vars so Terraform can use them
-                [System.Environment]::SetEnvironmentVariable("ARM_CLIENT_ID", "$(ARM_CLIENT_ID)", "Process")
-                [System.Environment]::SetEnvironmentVariable("ARM_CLIENT_SECRET", "$(ARM_CLIENT_SECRET)", "Process")
-                [System.Environment]::SetEnvironmentVariable("ARM_SUBSCRIPTION_ID", "$(ARM_SUBSCRIPTION_ID)", "Process")
-                [System.Environment]::SetEnvironmentVariable("ARM_TENANT_ID", "$(ARM_TENANT_ID)", "Process")
-                Write-Host "Environment variables set successfully."
+                # Export vars to both Process & Machine scope to ensure Terraform sees them
+                [Environment]::SetEnvironmentVariable("ARM_CLIENT_ID", "$(ARM_CLIENT_ID)", "Process")
+                [Environment]::SetEnvironmentVariable("ARM_CLIENT_SECRET", "$(ARM_CLIENT_SECRET)", "Process")
+                [Environment]::SetEnvironmentVariable("ARM_SUBSCRIPTION_ID", "$(ARM_SUBSCRIPTION_ID)", "Process")
+                [Environment]::SetEnvironmentVariable("ARM_TENANT_ID", "$(ARM_TENANT_ID)", "Process")
 
+                # Echo partial confirmation for logs
+                Write-Host "ARM_CLIENT_ID detected: $($env:ARM_CLIENT_ID.Substring(0,8))******"
+                Write-Host "ARM_TENANT_ID detected: $($env:ARM_TENANT_ID.Substring(0,8))******"
+                Write-Host "Environment variables exported successfully."
+
+          # Step 4: Verify environment (debug)
           - task: PowerShell@2
-            displayName: 'Sanity check ARM environment'
+            displayName: 'Verify Terraform Environment Variables'
             inputs:
               targetType: 'inline'
               script: |
-                Write-Host "ARM_CLIENT_ID present?  + $([bool]$env:ARM_CLIENT_ID)"
-                Write-Host "ARM_SUBSCRIPTION_ID present?  + $([bool]$env:ARM_SUBSCRIPTION_ID)"
-                Write-Host "ARM_TENANT_ID present?  + $([bool]$env:ARM_TENANT_ID)"
-                if ($env:ARM_TENANT_ID) {
-                  Write-Host ("Tenant ID: {0}****** (hidden)" -f $env:ARM_TENANT_ID.Substring(0,8))
-                }
+                Write-Host "Verifying ARM environment variables visible to Terraform..."
+                terraform version
+                Write-Host "ARM_CLIENT_ID exists? $([bool]$env:ARM_CLIENT_ID)"
+                Write-Host "ARM_TENANT_ID exists? $([bool]$env:ARM_TENANT_ID)"
+                Write-Host "ARM_SUBSCRIPTION_ID exists? $([bool]$env:ARM_SUBSCRIPTION_ID)"
+                Write-Host "ARM_CLIENT_SECRET length: $($env:ARM_CLIENT_SECRET.Length)"
 
+          # Step 5: Terraform Init (SP-based auth)
           - task: PowerShell@2
             displayName: 'Terraform Init'
             inputs:
               targetType: 'inline'
               script: |
                 cd "$(System.DefaultWorkingDirectory)\terraform"
-                terraform init -input=false
+                Write-Host "Running Terraform Init with Service Principal auth..."
+                terraform init -input=false -no-color
 
+          # Step 6: Terraform Validate
           - task: PowerShell@2
             displayName: 'Terraform Validate'
             inputs:
@@ -89,6 +94,7 @@ stages:
                 cd "$(System.DefaultWorkingDirectory)\terraform"
                 terraform validate
 
+          # Step 7: Terraform Plan
           - task: PowerShell@2
             displayName: 'Terraform Plan'
             inputs:
@@ -97,6 +103,7 @@ stages:
                 cd "$(System.DefaultWorkingDirectory)\terraform"
                 terraform plan -out=tfplan
 
+          # Step 8: Terraform Apply
           - task: PowerShell@2
             displayName: 'Terraform Apply'
             inputs:
