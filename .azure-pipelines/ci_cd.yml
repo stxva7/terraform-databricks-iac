@@ -1,96 +1,74 @@
 trigger:
   branches:
     include:
-      - main
       - dev
+      - main
 
 pool:
-  name: 'Default'
+  name: Default
   demands:
-  - agent.name -equals local-agent
+    - agent.name -equals local-agent
 
 variables:
-  TF_WORKING_DIR: 'terraform'
+  TF_VERSION: '1.5.7'
+  ENVIRONMENT: 'dev'
 
 stages:
-  - stage: Deploy_DEV
-    displayName: "Deploy Databricks Infrastructure - DEV"
-    condition: eq(variables['Build.SourceBranchName'], 'dev')
+  - stage: Terraform_Deploy
+    displayName: 'Terraform Deployment'
     jobs:
-      - job: Terraform_DEV
-        displayName: "Terraform Apply - DEV"
+      - job: Terraform
+        displayName: 'Terraform IaC on Windows Agent'
         steps:
-          - checkout: self
-          - task: PowerShell@2
-            displayName: 'Install Terraform (Windows)'
-            inputs:
-              targetType: 'inline'
-              script: |
-                Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_windows_amd64.zip" -OutFile "terraform.zip"
-                Expand-Archive -Path "terraform.zip" -DestinationPath "C:\terraform" -Force
-                [Environment]::SetEnvironmentVariable("PATH", $env:PATH + ";C:\terraform", [EnvironmentVariableTarget]::Machine)
-
-          - task: Bash@3
-            displayName: "Terraform Init"
-            inputs:
-              workingDirectory: '$(TF_WORKING_DIR)'
-              targetType: 'inline'
-              script: |
-                terraform init
-
-          - task: Bash@3
-            displayName: "Terraform Plan"
-            inputs:
-              workingDirectory: '$(TF_WORKING_DIR)'
-              targetType: 'inline'
-              script: |
-                terraform plan -out=tfplan
-
-          - task: Bash@3
-            displayName: "Terraform Apply"
-            inputs:
-              workingDirectory: '$(TF_WORKING_DIR)'
-              targetType: 'inline'
-              script: |
-                terraform apply -auto-approve tfplan
-
-  - stage: Deploy_PROD
-    displayName: "Deploy Databricks Infrastructure - PROD"
-    condition: eq(variables['Build.SourceBranchName'], 'main')
-    jobs:
-      - job: Terraform_PROD
-        displayName: "Terraform Apply - PROD"
-        steps:
+          # Step 1: Check out repository
           - checkout: self
 
+          # Step 2: Install Terraform (Windows compatible)
           - task: PowerShell@2
-            displayName: 'Install Terraform (Windows)'
+            displayName: 'Install Terraform CLI'
             inputs:
               targetType: 'inline'
               script: |
-                Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_windows_amd64.zip" -OutFile "terraform.zip"
-                Expand-Archive -Path "terraform.zip" -DestinationPath "C:\terraform" -Force
-                [Environment]::SetEnvironmentVariable("PATH", $env:PATH + ";C:\terraform", [EnvironmentVariableTarget]::Machine)
-          - task: Bash@3
-            displayName: "Terraform Init"
-            inputs:
-              workingDirectory: '$(TF_WORKING_DIR)'
-              targetType: 'inline'
-              script: |
-                terraform init
+                Write-Host "Installing Terraform v$(TF_VERSION)..."
+                $tfPath = "C:\terraform"
+                if (!(Test-Path $tfPath)) { New-Item -Path $tfPath -ItemType Directory | Out-Null }
+                Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_windows_amd64.zip" -OutFile "$tfPath\terraform.zip"
+                Expand-Archive -Path "$tfPath\terraform.zip" -DestinationPath $tfPath -Force
+                [Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";$tfPath", [EnvironmentVariableTarget]::Process)
+                terraform -version
 
-          - task: Bash@3
-            displayName: "Terraform Plan"
+          # Step 3: Terraform Init
+          - task: PowerShell@2
+            displayName: 'Terraform Init'
             inputs:
-              workingDirectory: '$(TF_WORKING_DIR)'
               targetType: 'inline'
               script: |
+                cd "$(System.DefaultWorkingDirectory)\terraform"
+                terraform init -input=false
+
+          # Step 4: Terraform Validate
+          - task: PowerShell@2
+            displayName: 'Terraform Validate'
+            inputs:
+              targetType: 'inline'
+              script: |
+                cd "$(System.DefaultWorkingDirectory)\terraform"
+                terraform validate
+
+          # Step 5: Terraform Plan
+          - task: PowerShell@2
+            displayName: 'Terraform Plan'
+            inputs:
+              targetType: 'inline'
+              script: |
+                cd "$(System.DefaultWorkingDirectory)\terraform"
                 terraform plan -out=tfplan
 
-          - task: Bash@3
-            displayName: "Terraform Apply"
+          # Step 6: Terraform Apply (auto-approve)
+          - task: PowerShell@2
+            displayName: 'Terraform Apply'
             inputs:
-              workingDirectory: '$(TF_WORKING_DIR)'
               targetType: 'inline'
               script: |
+                cd "$(System.DefaultWorkingDirectory)\terraform"
                 terraform apply -auto-approve tfplan
