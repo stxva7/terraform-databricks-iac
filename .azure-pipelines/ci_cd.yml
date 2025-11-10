@@ -11,86 +11,124 @@ pool:
 
 variables:
   TF_VERSION: '1.5.7'
-  ENVIRONMENT: 'dev'
+  ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+  ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+  ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+  ARM_TENANT_ID: $(ARM_TENANT_ID)
 
 stages:
-  - stage: Terraform_Deploy
-    displayName: 'Terraform Deployment'
-    jobs:
-      - job: Terraform
-        displayName: 'Terraform IaC on Windows Agent'
-        steps:
-          # Step 1: Check out repository
-          - checkout: self
+# ================================
+#  DEV ENVIRONMENT
+# ================================
+- stage: Terraform_DEV
+  displayName: 'Terraform Deploy - DEV'
+  jobs:
+    - job: Terraform_Dev
+      displayName: 'Terraform IaC Deployment - DEV'
+      steps:
+        # Checkout repo
+        - checkout: self
 
-          # Step 2: Install Terraform (Windows)
-          - task: PowerShell@2
-            displayName: 'Install Terraform CLI'
-            inputs:
-              targetType: 'inline'
-              script: |
-                Write-Host "Installing Terraform v$(TF_VERSION)..."
-                $tfPath = "C:\terraform"
-                if (!(Test-Path $tfPath)) { New-Item -Path $tfPath -ItemType Directory | Out-Null }
-                Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_windows_amd64.zip" -OutFile "$tfPath\terraform.zip"
-                Expand-Archive -Path "$tfPath\terraform.zip" -DestinationPath $tfPath -Force
-                [Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";$tfPath", [EnvironmentVariableTarget]::Process)
-                terraform -version
+        # Install Terraform
+        - task: PowerShell@2
+          displayName: 'Install Terraform CLI'
+          inputs:
+            targetType: 'inline'
+            script: |
+              Write-Host "Installing Terraform v$(TF_VERSION)..."
+              $tfPath = "C:\terraform"
+              if (!(Test-Path $tfPath)) { New-Item -Path $tfPath -ItemType Directory | Out-Null }
+              Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_windows_amd64.zip" -OutFile "$tfPath\terraform.zip"
+              Expand-Archive -Path "$tfPath\terraform.zip" -DestinationPath $tfPath -Force
+              [Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";$tfPath", [EnvironmentVariableTarget]::Process)
+              terraform -version
 
-          # Step 3: Terraform Init (includes SP authentication)
-          - task: PowerShell@2
-            displayName: 'Terraform Init'
-            inputs:
-              targetType: 'inline'
-              script: |
-                cd "$(System.DefaultWorkingDirectory)\terraform"
+        # Terraform Init (DEV)
+        - task: PowerShell@2
+          displayName: 'Terraform Init - DEV'
+          inputs:
+            targetType: 'inline'
+            script: |
+              cd "$(System.DefaultWorkingDirectory)\terraform"
+              $env:ARM_CLIENT_ID = "$(ARM_CLIENT_ID)"
+              $env:ARM_CLIENT_SECRET = "$(ARM_CLIENT_SECRET)"
+              $env:ARM_SUBSCRIPTION_ID = "$(ARM_SUBSCRIPTION_ID)"
+              $env:ARM_TENANT_ID = "$(ARM_TENANT_ID)"
+              terraform init -backend-config="key=terraform-dev.tfstate" -input=false
 
-                # --- Azure Service Principal Authentication ---
-                $env:ARM_CLIENT_ID = "$(ARM_CLIENT_ID)"
-                $env:ARM_CLIENT_SECRET = "$(ARM_CLIENT_SECRET)"
-                $env:ARM_SUBSCRIPTION_ID = "$(ARM_SUBSCRIPTION_ID)"
-                $env:ARM_TENANT_ID = "$(ARM_TENANT_ID)"
+        # Terraform Plan (DEV)
+        - task: PowerShell@2
+          displayName: 'Terraform Plan - DEV'
+          inputs:
+            targetType: 'inline'
+            script: |
+              cd "$(System.DefaultWorkingDirectory)\terraform"
+              terraform plan -out=tfplan-dev
 
-                Write-Host "Authenticating Terraform backend with Service Principal..."
-                terraform init -input=false -no-color
+        # Terraform Apply (DEV)
+        - task: PowerShell@2
+          displayName: 'Terraform Apply - DEV'
+          inputs:
+            targetType: 'inline'
+            script: |
+              cd "$(System.DefaultWorkingDirectory)\terraform"
+              terraform apply -auto-approve tfplan-dev
 
-          # Step 4: Terraform Validate
-          - task: PowerShell@2
-            displayName: 'Terraform Validate'
-            inputs:
-              targetType: 'inline'
-              script: |
-                cd "$(System.DefaultWorkingDirectory)\terraform"
-                terraform validate -no-color
+# ================================
+#  PROD ENVIRONMENT
+# ================================
+- stage: Terraform_PROD
+  displayName: 'Terraform Deploy - PROD'
+  dependsOn: Terraform_DEV
+  condition: succeeded()
+  jobs:
+    - job: Terraform_Prod
+      displayName: 'Terraform IaC Deployment - PROD'
+      steps:
+        # Checkout repo
+        - checkout: self
 
-          # Step 5: Terraform Plan
-          - task: PowerShell@2
-            displayName: 'Terraform Plan'
-            inputs:
-              targetType: 'inline'
-              script: |
-                cd "$(System.DefaultWorkingDirectory)\terraform"
+        # Install Terraform
+        - task: PowerShell@2
+          displayName: 'Install Terraform CLI'
+          inputs:
+            targetType: 'inline'
+            script: |
+              Write-Host "Installing Terraform v$(TF_VERSION)..."
+              $tfPath = "C:\terraform"
+              if (!(Test-Path $tfPath)) { New-Item -Path $tfPath -ItemType Directory | Out-Null }
+              Invoke-WebRequest -Uri "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_windows_amd64.zip" -OutFile "$tfPath\terraform.zip"
+              Expand-Archive -Path "$tfPath\terraform.zip" -DestinationPath $tfPath -Force
+              [Environment]::SetEnvironmentVariable('PATH', $env:PATH + ";$tfPath", [EnvironmentVariableTarget]::Process)
+              terraform -version
 
-                # Re-export vars for each isolated step
-                $env:ARM_CLIENT_ID = "$(ARM_CLIENT_ID)"
-                $env:ARM_CLIENT_SECRET = "$(ARM_CLIENT_SECRET)"
-                $env:ARM_SUBSCRIPTION_ID = "$(ARM_SUBSCRIPTION_ID)"
-                $env:ARM_TENANT_ID = "$(ARM_TENANT_ID)"
+        # Terraform Init (PROD)
+        - task: PowerShell@2
+          displayName: 'Terraform Init - PROD'
+          inputs:
+            targetType: 'inline'
+            script: |
+              cd "$(System.DefaultWorkingDirectory)\terraform"
+              $env:ARM_CLIENT_ID = "$(ARM_CLIENT_ID)"
+              $env:ARM_CLIENT_SECRET = "$(ARM_CLIENT_SECRET)"
+              $env:ARM_SUBSCRIPTION_ID = "$(ARM_SUBSCRIPTION_ID)"
+              $env:ARM_TENANT_ID = "$(ARM_TENANT_ID)"
+              terraform init -backend-config="key=terraform-prod.tfstate" -input=false
 
-                terraform plan -out=tfplan -input=false -no-color
+        # Terraform Plan (PROD)
+        - task: PowerShell@2
+          displayName: 'Terraform Plan - PROD'
+          inputs:
+            targetType: 'inline'
+            script: |
+              cd "$(System.DefaultWorkingDirectory)\terraform"
+              terraform plan -out=tfplan-prod
 
-          # Step 6: Terraform Apply (auto-approve)
-          - task: PowerShell@2
-            displayName: 'Terraform Apply'
-            inputs:
-              targetType: 'inline'
-              script: |
-                cd "$(System.DefaultWorkingDirectory)\terraform"
-
-                # Re-export vars for consistency
-                $env:ARM_CLIENT_ID = "$(ARM_CLIENT_ID)"
-                $env:ARM_CLIENT_SECRET = "$(ARM_CLIENT_SECRET)"
-                $env:ARM_SUBSCRIPTION_ID = "$(ARM_SUBSCRIPTION_ID)"
-                $env:ARM_TENANT_ID = "$(ARM_TENANT_ID)"
-
-                terraform apply -auto-approve tfplan -no-color
+        # Terraform Apply (PROD)
+        - task: PowerShell@2
+          displayName: 'Terraform Apply - PROD'
+          inputs:
+            targetType: 'inline'
+            script: |
+              cd "$(System.DefaultWorkingDirectory)\terraform"
+              terraform apply -auto-approve tfplan-prod
